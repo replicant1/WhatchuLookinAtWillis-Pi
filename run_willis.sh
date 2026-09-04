@@ -22,10 +22,41 @@ RIVAL=ascii-camera
 if systemctl is-active --quiet "$RIVAL"; then
     echo "Stopping $RIVAL, which is holding the camera and the panel..."
     sudo systemctl stop "$RIVAL"
-    # The stop is synchronous, but libcamera's release is not quite: the
-    # kernel frees the device when the process is reaped, and systemd returns
-    # when it has signalled it. A second covers the gap.
+
+    # WAIT for it, do not sleep a fixed second. Measured on 4 Sep 2026:
+    # ascii-camera did not respond to SIGTERM at all and systemd SIGKILLed it
+    # fifteen seconds later, at its TimeoutStopSec. A one-second sleep would
+    # have handed Willis the panel while the other program was still alive and
+    # still able to write to it - and that collision produces garbage on the
+    # glass rather than an error, because the panel's data pins go through
+    # RPi.GPIO, which takes no kernel line. So the failure mode of getting this
+    # wrong is a picture that looks broken for no visible reason.
+    #
+    # `systemctl stop` is synchronous and returns once the unit has left the
+    # active state, whether that ended in a clean exit or a SIGKILL - so by the
+    # time this loop runs it has almost always finished already. The loop is
+    # for the case where it has not: is-active reports "deactivating" while the
+    # timeout runs down.
+    for _ in $(seq 40); do
+        state="$(systemctl is-active "$RIVAL" || true)"
+        [ "$state" = "deactivating" ] || break
+        sleep 0.5
+    done
+
+    # The kernel frees the camera when the process is reaped, which is a moment
+    # after systemd stops accounting for it.
     sleep 1
+
+    state="$(systemctl is-active "$RIVAL" || true)"
+    if [ "$state" = "active" ] || [ "$state" = "deactivating" ]; then
+        echo "$RIVAL is still $state after 20s - refusing to start Willis" >&2
+        echo "and fight it for the camera. Investigate before retrying." >&2
+        exit 1
+    fi
+    # "failed" is a normal outcome of stopping this unit: it means SIGTERM was
+    # ignored and systemd killed it. The hardware is free either way, and
+    # starting it again clears the state.
+    echo "$RIVAL is now $state; the camera and the panel are free."
 fi
 
 echo "Willis starting. To give the box back afterwards:"
