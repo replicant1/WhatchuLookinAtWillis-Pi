@@ -1,0 +1,16 @@
+# API keys never live in the working tree. The key belongs in ~/.config/willis/api_key
+# or in the environment - see src/eyes/client.py. This line is a backstop for
+# the day somebody puts one here anyway.
+key
+*.key
+.env
+
+# Captured frames and their captions. A record of one box's use, not a fact
+# about the code, and the raw material for judging a prompt change later - so
+# it wants reading, not versioning.
+shots/
+logs/
+
+__pycache__/
+*.pyc
+.DS_Store

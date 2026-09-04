@@ -1,0 +1,59 @@
+# Whatchu Lookin At, Willis - started at boot, in the enclosure.
+#
+#   sudo cp deploy/willis.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now willis
+#
+#   journalctl -u willis -f          # watch it
+#   sudo systemctl stop willis       # release the camera and blank the panel
+#
+# NOT ENABLED BY DEFAULT, and that is deliberate. This machine also carries the
+# AsciiArt project, whose ascii-camera.service is enabled and holds the camera
+# and /dev/spidev0.0 from boot. Enabling both makes two appliances fight over
+# hardware that cannot be shared, and the collision is not always an error -
+# the panel's data pins are driven through RPi.GPIO, which takes no kernel
+# lock, so two writers produce garbage rather than a refusal. Decide which one
+# owns the box, and enable exactly that one.
+
+[Unit]
+Description=Whatchu Lookin At, Willis (camera, SPI panel, no terminal)
+
+# basic.target rather than multi-user.target, for the same reason AsciiArt does
+# it: multi-user is not reached until ~19 s on this Pi, nearly all of it
+# apt-daily and cloud-init, and every second before the panel lights is a
+# second of blank glass that looks like broken hardware.
+After=basic.target
+
+# Never give up. The default stops after 5 starts in 10 s, which for a sealed
+# box means one slow camera at boot leaves the panel dark until somebody SSHes
+# in to find out why.
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=rod
+Group=rod
+
+WorkingDirectory=/home/rod/Projects/Willis
+
+# /sys/class/pwm is root-owned and the service runs as rod. The "+" prefix
+# keeps this one step privileged. It exits 0 whatever happens, on purpose: a
+# buzzer that cannot be set up should cost the greeting and never the picture.
+ExecStartPre=+/bin/bash /home/rod/Projects/Willis/deploy/pwm_export.sh
+
+ExecStart=/usr/bin/python3 -u /home/rod/Projects/Willis/willis.py
+
+# SIGTERM is what willis.py installs a handler for, so `systemctl stop` takes
+# the clean path: camera released, panel blanked, backlight driven low. Without
+# it the panel would be left lit showing the last caption.
+KillSignal=SIGTERM
+TimeoutStopSec=20
+
+Restart=always
+RestartSec=3
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

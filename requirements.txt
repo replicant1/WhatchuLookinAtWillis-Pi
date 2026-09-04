@@ -1,0 +1,11 @@
+# Willis needs six things. Five are apt packages on Raspberry Pi OS and are
+# listed here for the record rather than for pip; deploy/setup.sh installs them.
+#
+#   python3-numpy      frame arithmetic and RGB565 packing
+#   python3-pil        image construction and the caption font
+#   python3-picamera2  the camera
+#   python3-lgpio      the encoder, the power LED and the buzzer's fallback
+#   python3-spidev     the ILI9341 panel
+#
+# The sixth is from PyPI and is the only one pip has to install:
+anthropic>=0.40.0
