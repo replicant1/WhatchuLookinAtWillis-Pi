@@ -117,6 +117,38 @@ valid image and the model will happily describe a blue-tinted scene without
 complaint, so this can only be caught by pointing the camera at something known
 to be red.
 
+## Numbers measured on this Pi, worth not rediscovering
+
+From the first end-to-end capture, 4 Sep 2026. Start-up is 14.5 seconds from
+process start to a box that can take a photograph, and it is two costs:
+
+    panel lit, splash showing        0.5 s   ...so the glass is never blank long
+    import anthropic                 7.9 s
+    picamera2 open and configured    6.0 s
+    ------------------------------------
+    ready for a press               14.5 s
+
+Both big costs are paid deliberately during start-up rather than lazily. The
+SDK import is warmed by eyes.client.warm() and the camera is held open for the
+life of the process - paid lazily, those fourteen seconds would land on the
+first button press, where they would look exactly like a very slow model.
+
+One capture, once running:
+
+    grab, show the frame             1.2 s   (FRAME_SECONDS, deliberate)
+    the model                        4.2 s
+    ------------------------------------
+    press to caption                 5.4 s
+
+So the model is not the slow part of this box; starting it is. Do not optimise
+the request before the import.
+
+The clip in describe.py fires on ordinary captions - the very first real one
+came back at 93 characters against a MAX_CHARS of 90 and was cut to 86 at a
+word boundary. That is the boundary working, not a fault, but it means the
+model treats the length in the prompt as a target rather than a limit and the
+local clip is load-bearing rather than defensive.
+
 ## Machine state that git does NOT have
 
 Everything in src/, tests/, tools/ and deploy/ comes back from a clone. These
