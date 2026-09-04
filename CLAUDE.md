@@ -117,6 +117,15 @@ valid image and the model will happily describe a blue-tinted scene without
 complaint, so this can only be caught by pointing the camera at something known
 to be red.
 
+**Settled on 4 Sep 2026, and the method is the useful part.** Rod put a tomato
+in front of the camera and the caption came back "a ripe tomato sitting on a
+table by a balcony window with blue sky beyond". The tomato is the weaker half
+of that - "ripe" can be inferred from shape without seeing any colour at all.
+The SKY is what proves it: a red/blue swap turns a blue sky orange, and no
+model describes an orange sky as blue. So the test to repeat, if the capture
+path is ever changed, is a red object WITH a known-colour background, and the
+background is the half that carries the proof.
+
 ## Numbers measured on this Pi, worth not rediscovering
 
 From the first end-to-end capture, 4 Sep 2026. Start-up is 14.5 seconds from
