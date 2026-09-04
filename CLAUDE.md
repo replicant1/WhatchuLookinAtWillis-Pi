@@ -127,8 +127,15 @@ rod's group memberships: spi, gpio, video (also i2c and input, for AsciiArt).
 Python modules: numpy, PIL, picamera2, lgpio, spidev, anthropic.
 
 The API key: ~/.config/willis/api_key or ANTHROPIC_API_KEY, never in the
-working tree. AsciiArt keeps its own at ~/.config/asciicam/api_key - a
-separate file on purpose, so rotating one cannot break the other.
+working tree. ON THE PI, not on the Mac - the Mac never runs Willis and has
+no key at all, and looking for these directories there is a wasted minute
+that has already been spent once. AsciiArt keeps its own at
+~/.config/asciicam/api_key on the same Pi, so the setup is one copy:
+
+    cp ~/.config/asciicam/api_key ~/.config/willis/api_key
+
+Two files rather than one on purpose, so rotating either cannot break the
+other.
 
 Willis deliberately installs NO shutdown hook. AsciiArt's
 /usr/lib/systemd/system-shutdown/asciiart.shutdown already drives GPIO 18 low,

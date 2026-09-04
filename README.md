@@ -45,9 +45,15 @@ this project checks them, it does not own them:
     dtoverlay=pwm-2chan,pin=12,func=4,pin2=13,func2=4  the buzzer
 
 The API key goes in the environment or in `~/.config/willis/api_key` — never
-in the working tree. (The AsciiArt project on this machine keeps its own at
-`~/.config/asciicam/api_key`; a separate file is deliberate, so rotating one
-cannot break the other.) Without one the box still takes photographs and shows them; it
+in the working tree. **On the Pi**, not on the machine you edit from: Willis
+runs there, and that is the only home directory it will ever read. The
+AsciiArt project keeps its own at `~/.config/asciicam/api_key` on the same
+Pi, so if that one is already set up:
+
+    cp ~/.config/asciicam/api_key ~/.config/willis/api_key
+
+Two files rather than one is deliberate, so rotating either cannot break the
+other. Without one the box still takes photographs and shows them; it
 says on the panel that it cannot describe them.
 
 ## Running
