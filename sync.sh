@@ -44,7 +44,7 @@ TEST_FILES=(
     __init__.py
     panel/__init__.py  panel/caption_test.py  panel/panel_selftest.py
     eyes/__init__.py   eyes/describe_test.py
-    control/__init__.py
+    control/__init__.py control/loop_test.py
 )
 
 DEPLOY_FILES=(setup.sh pwm_export.sh willis.service)

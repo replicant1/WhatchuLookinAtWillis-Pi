@@ -280,14 +280,37 @@ class Willis:
             else:
                 self.say("press the knob")
 
-            while self.is_running:
-                if self.encoder is not None and self.encoder.take_presses():
-                    self.capture()
-                    self.say("press the knob")
-                time.sleep(POLL_SECONDS)
-            return 0
+            return self._loop()
         finally:
             self._release()
+
+    def _loop(self):
+        """
+        Wait for presses until told to stop.
+
+        **The caption is left on the panel afterwards, and that is the whole
+        point of this method being its own thing.** The obvious spelling puts a
+        `self.say("press the knob")` after `self.capture()`, to return the box
+        to its resting state - and it destroys the product. capture() ends by
+        drawing the answer; anything drawn immediately after replaces it. The
+        first version did exactly that and the caption was on the glass for
+        about eighty milliseconds, which reads to a person standing there as
+        "it says looking... and then gives up".
+
+        So the resting state IS the last answer. The prompt is shown once, at
+        start-up, before there is anything better to show. A box displaying
+        what it last saw is more useful than one displaying an instruction its
+        owner already knows.
+
+        This was not caught by --shoot, which captures once and then sleeps -
+        a different path from the one the product actually runs. tests/control/
+        loop_test.py now covers it.
+        """
+        while self.is_running:
+            if self.encoder is not None and self.encoder.take_presses():
+                self.capture()
+            time.sleep(POLL_SECONDS)
+        return 0
 
     def _release(self):
         """
