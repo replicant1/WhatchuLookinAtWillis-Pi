@@ -52,7 +52,16 @@ logger = logging.getLogger("willis")
 
 # One short high note.  Deliberately not the two-note greeting: the shutter
 # happens while somebody is watching and wants an acknowledgement, not a tune.
-SHUTTER = ((1760, 0.06),)
+#
+# 4 kHz because the PS1240 is a RESONANT device, nominally around 4 kHz, and
+# volume is the only thing being bought here.  Duty is already 50%, which is as
+# loud as a square wave gets - above it the fundamental shrinks again, so 90%
+# sounds like 10% rather than louder - which leaves frequency as the only lever.
+# The first version ran at 1760 Hz for 60 ms and was audible but too quiet:
+# far below resonance AND very short, which is the worst pair of choices
+# available.  The greeting gets away with 440 and 880 Hz only because its notes
+# are a quarter-second each.
+SHUTTER = ((4000, 0.09),)
 
 # How often the button is checked.  Fifty milliseconds is far below the
 # threshold at which a press feels ignored and costs a lock acquisition; the
