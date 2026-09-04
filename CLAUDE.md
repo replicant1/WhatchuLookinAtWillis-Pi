@@ -99,6 +99,18 @@ measured - and then print a distinctive, specific description of what should be
 on screen and ask for that exact thing. Never report a panel change, a tune or
 an LED as verified on the strength of a clean run.
 
+**Confirmed by eye on 4 Sep 2026**, which is the only way this question has an
+answer: tests/panel/panel_selftest.py drew colour bars, a short caption, a long
+wrapped one, an amber status and a red failure, and Rod confirmed all five plus
+the panel staying dark afterwards. So the driver, the RGB565 byte order, the
+font-fitting in caption.py, the wrapping, and the backlight being driven low
+and deliberately not released are all good in this tree. Do not re-derive any
+of that from a clean test run - the run was clean before he looked, too.
+
+Still unconfirmed by a human, and therefore still unknown: the buzzer's two
+tunes, the GPIO 4 LED, and whether the camera's colours come out the right way
+round after the B,G,R reversal below.
+
 One that bites specifically here: picamera2's "RGB888" hands back channels in
 B, G, R order. src/capture/still.py reverses them. A swapped image is still a
 valid image and the model will happily describe a blue-tinted scene without
