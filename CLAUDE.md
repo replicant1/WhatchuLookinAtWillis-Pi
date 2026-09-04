@@ -109,12 +109,12 @@ of that from a clean test run - the run was clean before he looked, too.
 
 The buzzer's two tunes are confirmed too, 4 Sep 2026: the greeting was heard
 as a rising pair and the farewell as a falling pair, so the note ordering is
-right in both. The 60 ms shutter chirp at 1760 Hz was NOT heard and is being
-left alone - it is a nicety on a box whose real feedback is the picture
-appearing, and it is not worth more of anyone's afternoon. If it ever does
-matter, the untested hypothesis is that the PS1240 is resonant near 4 kHz and a
-60 ms note that far below resonance is simply too quiet; a longer note, or one
-nearer 4 kHz, is the thing to try first.
+right in both. The shutter chirp took two goes. At 1760 Hz for 60 ms it was
+audible during a real capture but too quiet - far below the PS1240's
+resonance AND very short, which is the worst available pair. It is now 4 kHz
+for 90 ms. Duty was never the lever: it is already 50%, which is as loud as a
+square wave gets, and above that the fundamental shrinks again. The greeting
+gets away with 440 and 880 Hz only because its notes are a quarter-second each.
 
 Still unconfirmed by a human: Willis's own use of the GPIO 4 LED (the LED
 itself works - it is visibly lit - but AsciiArt had already driven the pin high,
