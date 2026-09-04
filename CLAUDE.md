@@ -107,9 +107,19 @@ font-fitting in caption.py, the wrapping, and the backlight being driven low
 and deliberately not released are all good in this tree. Do not re-derive any
 of that from a clean test run - the run was clean before he looked, too.
 
-Still unconfirmed by a human, and therefore still unknown: the buzzer's two
-tunes, the GPIO 4 LED, and whether the camera's colours come out the right way
-round after the B,G,R reversal below.
+The buzzer's two tunes are confirmed too, 4 Sep 2026: the greeting was heard
+as a rising pair and the farewell as a falling pair, so the note ordering is
+right in both. The 60 ms shutter chirp at 1760 Hz was NOT heard and is being
+left alone - it is a nicety on a box whose real feedback is the picture
+appearing, and it is not worth more of anyone's afternoon. If it ever does
+matter, the untested hypothesis is that the PS1240 is resonant near 4 kHz and a
+60 ms note that far below resonance is simply too quiet; a longer note, or one
+nearer 4 kHz, is the thing to try first.
+
+Still unconfirmed by a human: Willis's own use of the GPIO 4 LED (the LED
+itself works - it is visibly lit - but AsciiArt had already driven the pin high,
+so power_led.on() has never yet changed anything), and the encoder press as the
+shutter, since every capture so far has used --shoot.
 
 One that bites specifically here: picamera2's "RGB888" hands back channels in
 B, G, R order. src/capture/still.py reverses them. A swapped image is still a
