@@ -1,31 +1,33 @@
 #!/usr/bin/env python3
 """
-Check that the answer stays on the panel, with no hardware and no network.
+Check the preview loop: what is shown, what is frozen, and what is described.
 
     python3 tests/control/loop_test.py
 
-This test exists because of a bug that four successful runs did not find. The
-loop used to say "press the knob" immediately after capture() returned, to put
-the box back in its resting state. capture() ends by drawing the caption, so
-the caption survived about eighty milliseconds - and since "looking..." and
-"press the knob" are both amber status screens, a person watching saw the
-picture, then amber text, then amber text, and reported that it was stuck on
-"looking".
+Two bugs are being guarded against here, and both of them look fine from the
+outside.
 
-Every assertion below would have passed against that version except one: the
-last thing drawn. That is the whole test.
+**Describing the wrong frame.** The person pressed the knob while looking at a
+particular picture. If capture() grabs a fresh frame instead of using the one
+frozen on the glass, the box describes something a fraction of a second later
+than the picture they chose. Usually that is the same scene, occasionally it is
+not, and it is never checkable afterwards - which is exactly why it needs a
+test rather than an eye. The check is identity: the object handed to describe()
+must be the very object last drawn to the panel.
 
-It was missed because --shoot captures once and then sleeps, which is a
-different path from the loop the product actually runs. So this drives _loop()
-itself rather than capture().
+**Losing the answer.** An earlier version drew the idle prompt immediately
+after capture() returned, so the caption survived about eighty milliseconds.
+Both screens were amber, so it read as being stuck. The check is that the
+caption is still the last thing on the panel while the hold runs.
 
-The panel double is a **recorder, not a stub**: it keeps every image it was
-given, in order, because "was the caption ever drawn" and "was the caption
-still there at the end" are different questions and only the second one is the
-product.
+The doubles are recorders and fakes rather than stubs: the panel keeps every
+image in order, the camera hands out a distinguishable frame each time, and the
+encoder plays a script of presses. Order and identity are the whole subject, so
+nothing that discards either would be usable.
 """
 
 import sys
+import time
 import types
 from pathlib import Path
 
@@ -41,6 +43,7 @@ from panel import caption                             # noqa: E402
 failures = []
 
 CAPTION = "a ribbed tomato on a pale table"
+HOLD = 0.25          # stands in for CAPTION_SECONDS; the real one is 10 s
 
 
 def check(label, got, want):
@@ -52,7 +55,7 @@ def check(label, got, want):
 
 
 class RecordingPanel:
-    """Every image, in order. Nothing is thrown away, because order is the point."""
+    """Every image, in order. Order is the subject, so nothing is discarded."""
 
     def __init__(self):
         self.images = []
@@ -68,103 +71,133 @@ class RecordingPanel:
 
 
 class FakeCamera:
+    """A different frame every time, so 'which frame' is an answerable question."""
+
     def __init__(self):
-        self.grabs = 0
+        self.frames = []
 
     def grab(self):
-        self.grabs += 1
-        return Image.new("RGB", (640, 480), (200, 40, 40))
+        # A distinct shade per frame, so a mix-up is visible as well as
+        # detectable by identity.
+        shade = 10 + 20 * len(self.frames)
+        frame = Image.new("RGB", (640, 480), (shade, shade, shade))
+        self.frames.append(frame)
+        return frame
 
     def stop(self):
         pass
 
 
 class FakeEncoder:
-    """One press, then nothing, then stop the loop."""
+    """Plays a script of press counts, then stops the loop."""
 
-    def __init__(self, willis, presses=1, polls_before_stopping=3):
+    def __init__(self, willis, script, stop_after):
         self.willis = willis
-        self.presses = presses
-        self.polls = 0
-        self.limit = polls_before_stopping
+        self.script = list(script)
+        self.stop_after = stop_after
+        self.calls = 0
 
     def take_presses(self):
-        self.polls += 1
-        if self.polls > self.limit:
+        self.calls += 1
+        if self.calls >= self.stop_after:
             self.willis.is_running = False
-        if self.presses:
-            self.presses -= 1
-            return 1
-        return 0
+        return self.script.pop(0) if self.script else 0
 
     def stop(self):
         pass
 
 
-class FakeClient:
+class Recorder:
+    """Stands in for describe(), keeping the frame object it was handed."""
+
     def __init__(self, text=CAPTION):
         self.text = text
-        self.messages = self
+        self.frames = []
 
-    def create(self, **kwargs):
-        block = types.SimpleNamespace(type="text", text=self.text)
-        return types.SimpleNamespace(content=[block], stop_reason="end_turn",
-                                     stop_details=None)
+    def __call__(self, frame, client, **kwargs):
+        self.frames.append(frame)
+        return self.text, 0.01
 
 
-def build(presses=1):
+def build(script, stop_after):
     options = types.SimpleNamespace(
         rotation=0, brightness=100, buzzer=False, led=False, encoder=True,
         shoot=False, shoot_seconds=0.0, log="CRITICAL")
     willis = app.Willis(options)
     willis.panel = RecordingPanel()
     willis.camera = FakeCamera()
-    willis.client = FakeClient()
-    willis.encoder = FakeEncoder(willis, presses=presses)
+    willis.client = object()                # never used; describe is replaced
+    willis.encoder = FakeEncoder(willis, script, stop_after)
     return willis
 
 
-def is_same(a, b):
-    return a.tobytes() == b.tobytes()
-
-
 def main():
-    # The frame is deliberately held on screen for over a second in the real
-    # thing. Nothing here is testing that, and waiting for it would make this
-    # test slow enough that nobody runs it.
-    app.FRAME_SECONDS = 0.0
+    app.CAPTION_SECONDS = HOLD
 
-    print("One press")
-    willis = build(presses=1)
+    print("A press freezes, and describes what was frozen")
+    recorder = Recorder()
+    app.describe = recorder
+    # poll 1: no press -> frame A.  poll 2: no press -> frame B.
+    # poll 3: press    -> describe B, then hold.
+    willis = build(script=[0, 0, 1], stop_after=12)
     willis._loop()
-    panel = willis.panel
+    panel, camera = willis.panel, willis.camera
 
-    check("the camera was used exactly once", willis.camera.grabs, 1)
-    check("the capture was counted", willis.captures, 1)
-
-    # Three screens: the frame, "looking...", the caption.
-    check("three screens were drawn", len(panel.images), 3)
-    check("the frame is shown before the model is asked",
-          is_same(panel.images[0],
-                  caption.render_frame(Image.new("RGB", (640, 480), (200, 40, 40)))),
+    check("two preview frames were drawn before the press",
+          panel.images[0].tobytes() == caption.render_frame(camera.frames[0]).tobytes()
+          and panel.images[1].tobytes() == caption.render_frame(camera.frames[1]).tobytes(),
           True)
-    check("the second screen is the status line",
-          is_same(panel.images[1], caption.render_status("looking...")), True)
+    check("exactly one capture was made", willis.captures, 1)
 
-    # THE ONE THAT MATTERS. Against the old loop this was the amber prompt.
-    check("the LAST thing on the panel is the answer",
-          is_same(panel.images[-1], caption.render(CAPTION)), True)
-    check("the answer is not overwritten by the idle prompt",
-          is_same(panel.images[-1], caption.render_status("press the knob")),
-          False)
+    # THE ONE THAT MATTERS. Identity, not equality: a fresh grab would produce
+    # an equal-looking frame only by accident, but never the same object.
+    check("the frame described is the frame that was frozen on the glass",
+          recorder.frames[0] is camera.frames[1], True)
+    # Not "is the newest frame" - the preview resumes afterwards and grabs
+    # more, so that would only hold while the loop was broken. The claim is
+    # that nothing grabbed AFTER the press was the thing described.
+    check("it is not any frame grabbed after the press",
+          any(recorder.frames[0] is f for f in camera.frames[2:]), False)
+
+    # capture() must not grab. If it ever does again, grabs outrun previews.
+    preview_count = sum(1 for i in panel.images
+                        if i.tobytes() != caption.render(CAPTION).tobytes())
+    check("no frame was grabbed while the answer was up",
+          len(camera.frames), preview_count)
+
+    caption_image = caption.render(CAPTION)
+    check("the answer was drawn",
+          any(i.tobytes() == caption_image.tobytes() for i in panel.images), True)
+    check("the answer is not immediately overwritten by a prompt",
+          panel.images[2].tobytes() == caption_image.tobytes(), True)
 
     print()
-    print("Two presses")
-    willis = build(presses=2)
+    print("The answer is held, then the preview comes back")
+    recorder = Recorder()
+    app.describe = recorder
+    willis = build(script=[0, 1], stop_after=40)
+    started = time.monotonic()
     willis._loop()
-    check("both presses were taken", willis.captures, 2)
-    check("the answer is still the last thing after a second capture",
-          is_same(willis.panel.images[-1], caption.render(CAPTION)), True)
+    elapsed = time.monotonic() - started
+    check("the hold lasted at least CAPTION_SECONDS", elapsed >= HOLD, True)
+    index = next(n for n, i in enumerate(willis.panel.images)
+                 if i.tobytes() == caption.render(CAPTION).tobytes())
+    check("the preview resumed after the hold",
+          len(willis.panel.images) > index + 1, True)
+
+    print()
+    print("A press while the answer is up dismisses it, and takes no photograph")
+    recorder = Recorder()
+    app.describe = recorder
+    # poll 1: no press -> frame A.  poll 2: press -> describe A, hold.
+    # first poll inside the hold: press -> dismiss early, no new capture.
+    willis = build(script=[0, 1, 1], stop_after=6)
+    started = time.monotonic()
+    willis._loop()
+    elapsed = time.monotonic() - started
+    check("still exactly one capture", willis.captures, 1)
+    check("the model was asked once", len(recorder.frames), 1)
+    check("the hold was cut short", elapsed < HOLD, True)
 
     print()
     if failures:
@@ -172,10 +205,11 @@ def main():
         for name in failures:
             print(f"  - {name}")
         return 1
-    print("RESULT: a press draws the frame, then the status, then the caption -")
-    print("        and the caption is what is still on the glass when the loop")
-    print("        goes back to waiting. The box's resting state is the last")
-    print("        thing it saw, not an instruction its owner already knows.")
+    print("RESULT: the preview draws frames until the knob is pressed; the press")
+    print("        describes the exact frame that was on the glass, not a newer")
+    print("        one; the answer stays up for the hold and is not overwritten;")
+    print("        and a press while it is up dismisses it without taking")
+    print("        another photograph.")
     return 0
 
 

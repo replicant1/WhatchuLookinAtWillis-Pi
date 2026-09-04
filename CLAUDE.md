@@ -152,12 +152,31 @@ SDK import is warmed by eyes.client.warm() and the camera is held open for the
 life of the process - paid lazily, those fourteen seconds would land on the
 first button press, where they would look exactly like a very slow model.
 
+The live preview runs at 12.7 fps at 640x480, measured over 300 frames and
+steady. There is no frame limiter: the loop paces itself on the SPI write,
+which is the slow step and which releases the GIL while it runs, so a sleep
+would only make it worse.
+
+Two choices hold that rate up, and both look like sacrifices that are not:
+
+- Capturing at 640x480 rather than 1024x768 costs NOTHING in caption quality.
+  describe.py scales whatever it is given to 512 on the long edge, so both
+  sizes arrive at the model as 512x384. The extra pixels were being discarded
+  one function later.
+- render_frame resamples BILINEAR, not LANCZOS. It used to run once per button
+  press, where the best filter was obviously right; it now runs on every
+  preview frame. At a 2:1 reduction onto a 2.4 inch panel the difference is
+  invisible and the cost is not.
+
 One capture, once running:
 
-    grab, show the frame             1.2 s   (FRAME_SECONDS, deliberate)
     the model                        4.2 s
     ------------------------------------
-    press to caption                 5.4 s
+    press to caption                 4.2 s
+
+Nothing is drawn between the freeze and the answer. The preview stopping is the
+acknowledgement, and it needs no words - an intermediate "looking..." screen
+would cover the very picture the person is waiting to hear about.
 
 So the model is not the slow part of this box; starting it is. Do not optimise
 the request before the import.

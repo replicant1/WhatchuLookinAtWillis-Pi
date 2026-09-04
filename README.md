@@ -2,11 +2,18 @@
 
 A camera in a box that says what it can see.
 
-Press the knob. The 2.4 inch panel shows you the frame it just took, then a
-short phrase describing it. That is the whole product.
+The 2.4 inch panel shows what the camera can see, live. Press the knob and the
+picture freezes; a few seconds later it is replaced by a phrase describing it,
+and ten seconds after that the preview comes back. That is the whole product.
 
-    press ──▶ chirp ──▶ [the frame] ──▶ looking... ──▶ "a tabby cat asleep on
-                                                        a stack of post"
+    [live preview, 12.7 fps]  ──press──▶  [frozen]  ──▶  "a tabby cat asleep
+              ▲                                            on a stack of post"
+              └────────────── 10 seconds ───────────────────────┘
+
+There is no prompt and no instruction anywhere on the panel. A live picture of
+the room explains itself, and one that has stopped moving is unmistakable - the
+freeze *is* the acknowledgement of the press, which is why nothing is drawn
+over the picture while the model is being asked.
 
 Built on a Raspberry Pi Zero 2 W with a camera module, an ILI9341 SPI panel, a
 KY-040 rotary encoder, a piezo buzzer and an indicator LED. The description
@@ -104,6 +111,7 @@ predecessor. `python3 tools/hardware/panel_blank.py` puts a stranded panel out.
 
     python3 tests/panel/caption_test.py     # layout arithmetic, no hardware
     python3 tests/eyes/describe_test.py     # the request and the answer, no network
+    python3 tests/control/loop_test.py      # preview, freeze and hold, no hardware
     python3 tests/panel/panel_selftest.py   # lights the panel, then asks you
 
 The first two are ordinary tests. The third is not, and says so: **nothing in
@@ -118,8 +126,8 @@ The same is true of the buzzer, the LED, and whether the captions are any
 
 ## Where things are
 
-    willis.py                 the program: press, capture, ask, show
-    src/capture/still.py      one frame, on demand
+    willis.py                 the program: preview, freeze, ask, hold
+    src/capture/camera.py     the camera, streaming
     src/panel/ili9341.py      the panel driver, over spidev
     src/panel/caption.py      words onto 320x240
     src/eyes/describe.py      a photograph in, one short line out

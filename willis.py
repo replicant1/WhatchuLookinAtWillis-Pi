@@ -2,8 +2,12 @@
 """
 Whatchu Lookin At, Willis - a camera in a box that says what it can see.
 
-Press the knob.  The panel shows you the frame it took, then what the model
-made of it.  That is the whole product.
+The panel shows what the camera can see.  Press the knob and the picture
+freezes, and a few seconds later it is replaced by a phrase describing it; ten
+seconds after that the preview comes back.  That is the whole product.
+
+There is no prompt and no instruction anywhere, because a live picture of the
+room is self-explanatory and a frozen one is unmistakable.
 
     python3 willis.py                  # the box, as it lives in the enclosure
     python3 willis.py --shoot          # one photograph, then exit (development)
@@ -39,7 +43,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
-from capture.still import Still                          # noqa: E402
+from capture.camera import Camera                          # noqa: E402
 from control import buzzer, power_led                    # noqa: E402
 from control.encoder import RotaryEncoder                # noqa: E402
 from eyes import client as eyes_client                   # noqa: E402
@@ -69,9 +73,15 @@ SHUTTER = ((4000, 0.09),)
 # polls however slow this loop gets.
 POLL_SECONDS = 0.05
 
-# How long the captured frame is shown before "looking..." replaces it.  Long
-# enough to see what was framed, short enough not to feel like a delay.
-FRAME_SECONDS = 1.2
+# Preview frames between throughput log lines. Often enough to notice a preview
+# that has quietly halved in speed, rare enough not to fill the journal.
+PREVIEW_LOG_EVERY = 100
+
+# How long the answer stays up before the preview comes back.  Ten seconds is
+# long enough to read eighty characters twice and long enough to fetch somebody
+# to look, and short enough that a box left alone returns to showing what it
+# can see rather than what it saw a while ago.
+CAPTION_SECONDS = 10.0
 
 
 class Willis:
@@ -85,6 +95,9 @@ class Willis:
         self.encoder = None
         self.client = None
         self.captures = 0
+        # The frame currently on the panel. This is what a press describes -
+        # see _loop() - so it is state rather than a local variable.
+        self.showing = None
 
     # --- the panel -------------------------------------------------------
 
@@ -184,7 +197,7 @@ class Willis:
         self.say(f"{NAME}\nv{VERSION}")
 
     def _start_camera(self):
-        self.camera = Still(rotation=self.options.rotation).start()
+        self.camera = Camera(rotation=self.options.rotation).start()
 
     def _start_encoder(self):
         if not self.options.encoder:
@@ -208,9 +221,22 @@ class Willis:
 
     # --- one capture -----------------------------------------------------
 
-    def capture(self):
+    def capture(self, frame):
         """
-        Take a photograph and describe it.  Never raises.
+        Describe the frame that is currently frozen on the panel.  Never raises.
+
+        **The frame is passed in, not grabbed here, and that is the point.**
+        The preview stops updating the instant a press is seen, so whatever is
+        on the glass at that moment is what the person chose to photograph.
+        Grabbing a fresh frame instead would describe something a fraction of a
+        second later than the picture they were looking at - usually the same
+        thing, occasionally not, and never checkable afterwards.
+
+        **Nothing is drawn while the model is being asked.** The freeze IS the
+        acknowledgement: a preview that was moving and has stopped is an
+        unmistakable signal, and it needs no words. An intermediate
+        "looking..." screen would replace the very picture the person is
+        waiting to hear about.
 
         Every failure ends with something on the panel, because a box whose
         only output goes blank is indistinguishable from a box that is broken.
@@ -218,21 +244,10 @@ class Willis:
         self.captures += 1
         self._chirp()
 
-        try:
-            frame = self.camera.grab()
-        except Exception as e:                   # noqa: BLE001
-            logger.exception("Capture failed")
-            self.complain(f"camera trouble\n{type(e).__name__}")
-            return
-
-        self._show(caption_panel.render_frame(frame))
-        time.sleep(FRAME_SECONDS)
-
         if self.client is None:
             self.complain("no API key\nI can see but I cannot say")
             return
 
-        self.say("looking...")
         try:
             text, elapsed = describe(frame, self.client)
         except DescribeError as e:
@@ -280,14 +295,14 @@ class Willis:
             self._start_encoder()
 
             if self.options.shoot:
-                self.capture()
+                # The one path that has no preview to freeze, so it takes its
+                # own frame. Development only; the box itself has only the knob.
+                self.capture(self.camera.grab())
                 time.sleep(self.options.shoot_seconds)
                 return 0
 
             if self.encoder is None:
                 self.complain("no button\nnothing can start a photograph")
-            else:
-                self.say("press the knob")
 
             return self._loop()
         finally:
@@ -295,31 +310,86 @@ class Willis:
 
     def _loop(self):
         """
-        Wait for presses until told to stop.
+        Show what the camera sees, until somebody presses the knob.
 
-        **The caption is left on the panel afterwards, and that is the whole
-        point of this method being its own thing.** The obvious spelling puts a
-        `self.say("press the knob")` after `self.capture()`, to return the box
-        to its resting state - and it destroys the product. capture() ends by
-        drawing the answer; anything drawn immediately after replaces it. The
-        first version did exactly that and the caption was on the glass for
-        about eighty milliseconds, which reads to a person standing there as
-        "it says looking... and then gives up".
+        The preview is the resting state and there is no prompt, because a live
+        picture of the room needs no caption explaining what it is.
 
-        So the resting state IS the last answer. The prompt is shown once, at
-        start-up, before there is anything better to show. A box displaying
-        what it last saw is more useful than one displaying an instruction its
-        owner already knows.
+        **Presses are checked before the next frame is drawn, not after.** The
+        person pressed while looking at a particular picture, and that picture
+        is what `self.showing` holds; drawing a new frame first and then
+        noticing the press would describe something they never saw. It is a
+        fraction of a second's difference and it is exactly the difference
+        between "the box described what I showed it" and "the box described
+        something like what I showed it".
 
-        This was not caught by --shoot, which captures once and then sleeps -
-        a different path from the one the product actually runs. tests/control/
-        loop_test.py now covers it.
+        There is no sleep in this loop on purpose. It paces itself on the SPI
+        write, which is the slow step and which releases the GIL while it runs,
+        so adding a delay would only make the preview worse. The loop is idle
+        the moment a capture starts, because a frozen preview draws nothing.
         """
+        frames = 0
+        started = time.monotonic()
+
         while self.is_running:
             if self.encoder is not None and self.encoder.take_presses():
-                self.capture()
-            time.sleep(POLL_SECONDS)
+                if self.showing is None:
+                    # Pressed between the camera starting and the first frame
+                    # reaching the glass. There is nothing frozen to describe.
+                    logger.info("Press before the first frame; ignored")
+                    continue
+                self.capture(self.showing)
+                self._hold()
+                continue
+
+            try:
+                frame = self.camera.grab()
+            except Exception as e:               # noqa: BLE001
+                logger.exception("Preview grab failed")
+                self.complain(f"camera trouble\n{type(e).__name__}")
+                return 1
+
+            self.showing = frame
+            self._show(caption_panel.render_frame(frame))
+
+            frames += 1
+            if frames % PREVIEW_LOG_EVERY == 0:
+                elapsed = time.monotonic() - started
+                logger.info("Preview: %d frames, %.1f fps", frames,
+                            frames / elapsed)
         return 0
+
+    def _hold(self, seconds=None):
+        """
+        Leave the answer up, and come back early if the knob is pressed.
+
+        `seconds` is resolved here rather than in the signature, because a
+        default argument is bound once when the function is defined: written
+        as `seconds=CAPTION_SECONDS`, the constant becomes uneditable the
+        moment this module is imported, and anything that sets it afterwards -
+        a test, a future command-line flag - is silently ignored while
+        appearing to work. That is exactly how it was written first, and the
+        test that caught it looked like a broken test rather than a real
+        finding for several minutes.
+
+        A press during the hold means "I have read it": the preview returns
+        immediately and no second capture is started. Photographing again
+        therefore takes one more press than it strictly could, which is a much
+        smaller surprise than a box that fires again the moment somebody
+        touches it while reading.
+
+        Checked at POLL_SECONDS rather than slept through, so a `systemctl
+        stop` during the hold is acted on in fifty milliseconds instead of ten
+        seconds.
+        """
+        if seconds is None:
+            seconds = CAPTION_SECONDS
+        deadline = time.monotonic() + seconds
+        while self.is_running and time.monotonic() < deadline:
+            if self.encoder is not None and self.encoder.take_presses():
+                logger.info("Answer dismissed by a press")
+                return
+            time.sleep(POLL_SECONDS)
 
     def _release(self):
         """

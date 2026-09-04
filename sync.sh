@@ -35,7 +35,7 @@ SRC_FILES=(
     version.py
     __init__.py
     panel/__init__.py  panel/ili9341.py  panel/caption.py
-    capture/__init__.py capture/still.py
+    capture/__init__.py capture/camera.py
     eyes/__init__.py   eyes/client.py    eyes/describe.py
     control/__init__.py control/encoder.py control/power_led.py control/buzzer.py
 )

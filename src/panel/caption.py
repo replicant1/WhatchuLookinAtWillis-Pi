@@ -46,6 +46,13 @@ FALLBACK_FONT_PATHS = (
     "/Library/Fonts/Arial Unicode.ttf",
 )
 
+# Bilinear, not Lanczos. This function used to run once per button press,
+# where the best filter available was obviously right; it now runs on every
+# preview frame, where it is on the critical path of the frame rate. Lanczos
+# weighs a far larger neighbourhood per output pixel, and at a 2:1 reduction
+# onto a 2.4 inch panel the difference is invisible while the cost is not.
+PREVIEW_RESAMPLE = Image.BILINEAR
+
 MARGIN = 12                # pixels of dark border, all four sides
 LINE_SPACING = 1.15        # multiple of the font's own line height
 
@@ -177,7 +184,7 @@ def render_frame(frame, size=PANEL, background=BLACK):
     """
     image = Image.new("RGB", size, background)
     scaled = frame.copy()
-    scaled.thumbnail(size, Image.LANCZOS)
+    scaled.thumbnail(size, PREVIEW_RESAMPLE)
     image.paste(scaled, ((size[0] - scaled.size[0]) // 2,
                          (size[1] - scaled.size[1]) // 2))
     return image
